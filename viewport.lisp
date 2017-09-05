@@ -1,10 +1,10 @@
 (ql:quickload '("sdl2" "sdl2-image"))
 
-(defpackage #:sdl-texture
+(defpackage #:sdl-viewport
   (:use :cl :sdl2)
   (:export :main))
 
-(in-package :sdl-texture)
+(in-package :sdl-viewport)
 
 (defparameter *screen-width* 640)
 (defparameter *screen-height* 480)
