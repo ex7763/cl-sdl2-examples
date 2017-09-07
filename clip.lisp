@@ -89,7 +89,7 @@
                           :bottom-left (0 100 100 100)
                           :bottom-right (100 100 100 100))))
      
-          (texture-load-from-file spritesheet-texture "spritesheet.png")
+          (texture-load-from-file spritesheet-texture "media/spritesheet.png")
            
           (sdl2:with-event-loop (:method :poll)
             (:quit () t)

@@ -98,7 +98,7 @@
 
 (defun main()
   (with-window-renderer (window renderer)
-    (let ((font (sdl2-ttf:open-font "monaco.ttf" 20))
+    (let ((font (sdl2-ttf:open-font "media/monaco.ttf" 20))
           (text-texture (make-instance 'texture :renderer renderer)))
       (texture-load-from-string text-texture font
                                 "test123........Hello, World")

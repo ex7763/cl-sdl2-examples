@@ -1,10 +1,12 @@
-(ql:quickload '("sdl2" "sdl2-image" "sdl2-ttf" "sdl2-mixer"))
+;; UNDONE
 
-(defpackage #:sdl-sound
+(ql:quickload '("sdl2" "sdl2-image" "sdl2-ttf"))
+
+(defpackage #:sdl-motion
   (:use :cl :sdl2)
   (:export :main))
 
-(in-package :sdl-sound)
+(in-package :sdl-motion)
 
 (defparameter *screen-width* 640)
 (defparameter *screen-height* 480)
@@ -81,7 +83,6 @@
            (sdl2:render-copy renderer mTexture :dest-rect
                              (sdl2:make-rect x y mWidth mHeight))))))
 
-
 (defmacro with-window-renderer ((window renderer) &body body)
   `(sdl2:with-init (:video)
      (sdl2:with-window (,window
@@ -91,56 +92,81 @@
                         :flags '(:shown))
        (sdl2:with-renderer (,renderer ,window :index -1 :flags '(:accelerated :presentvsync))
          (sdl2-image:init '(:png))
-         (sdl2-ttf:init)
-         (sdl2-mixer:init :mp3)
          ,@body
-         (sdl2-image:quit)
-         (sdl2-ttf:quit)
-         (sdl2-mixer:quit)))))
+         (sdl2-image:quit)))))
+
+(defun check-collision (rect1 rect2)
+  (if (or (<= (+ (sdl2:rect-y rect1) (sdl2:rect-height rect1))
+              (sdl2:rect-y rect2))
+          (>= (sdl2:rect-y rect1)
+              (+ (sdl2:rect-y rect2) (sdl2:rect-height rect2)))
+          (<= (+ (sdl2:rect-x rect1) (sdl2:rect-width rect1))
+              (sdl2:rect-x rect2))
+          (>= (sdl2:rect-x rect1)
+              (+ (sdl2:rect-x rect2) (sdl2:rect-width rect2))))
+      nil
+      t))
 
 (defun main()
   (with-window-renderer (window renderer)
-    (sdl2-mixer:open-audio 22050 :s16sys 2 2048)
-    (let ((font (sdl2-ttf:open-font "media/monaco.ttf" 20))
-          (text-texture (make-instance 'texture :renderer renderer))
-          (music (sdl2-mixer:load-music "media/temple.mp3"))
-          (volume 128))
-      (texture-load-from-string text-texture font
-                                "space to start, 0 to stop, 1 to resume and 2 to pause")
+    (let ((dot-texture (make-instance 'texture :renderer renderer))
+          (dot-speed 3)
+          (dot-x 0)
+          (dot-y 0)
+          (dot-vel-x 0)
+          (dot-vel-y 0)
+          (window-rect (sdl2::make-rect 0 0 *screen-width* *screen-height*))
+          (wall-rect (sdl2:make-rect (/ *screen-width* 4) 30
+                                     (/ *screen-width* 8) (/ *screen-height* 2))))
+      (texture-load-from-file dot-texture "media/dot.bmp")
       (sdl2:with-event-loop (:method :poll)
         (:quit () t)
         (:keydown
          (:keysym keysym)
          (let ((scancode (scancode-value keysym)))
-           (cond ((scancode= scancode :scancode-space)
-                  (progn (format t "Playing Song~%")
-                         (sdl2-mixer:play-music music -1)))
-                 ((scancode= scancode :scancode-0)
-                  (progn (format t "Stop Song~%")
-                         (sdl2-mixer:halt-music)))
-                 ((scancode= scancode :scancode-up)
-                  (when (< (+ volume 20) 128)
-                    (incf volume 20)
-                    (format t "Current Volume: ~a~%" volume)
-                    (sdl2-mixer:volume-music volume)))
+           (cond ((scancode= scancode :scancode-up)
+                  (setf dot-vel-y (- dot-speed)))
                  ((scancode= scancode :scancode-down)
-                  (when (> (- volume 20) 0)
-                    (decf volume 20)
-                    (format t "Current Volume: ~a~%" volume)
-                    (sdl2-mixer:volume-music volume))))))
+                  (setf dot-vel-y dot-speed))
+                 ((scancode= scancode :scancode-left)
+                  (setf dot-vel-x (- dot-speed)))
+                 ((scancode= scancode :scancode-right)
+                  (setf dot-vel-x dot-speed)))))
+        (:keyup
+         (:keysym keysym)
+         (let ((scancode (scancode-value keysym)))
+           (cond ((scancode= scancode :scancode-up)
+                  (setf dot-vel-y 0))
+                 ((scancode= scancode :scancode-down)
+                  (setf dot-vel-y 0))
+                 ((scancode= scancode :scancode-left)
+                  (setf dot-vel-x 0))
+                 ((scancode= scancode :scancode-right)
+                  (setf dot-vel-x 0)))))
         (:idle ()
                (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
                (sdl2:render-clear renderer)
 
-               (texture-render text-texture
-                               (- (floor *screen-width* 2)
-                                  (floor (mWidth text-texture) 2))
-                               (- (floor *screen-height* 2)
-                                  (floor (mHeight text-texture) 2)))
+               ;; Render a wall
+               (sdl2:set-render-draw-color renderer #xCC #xFF #xCC #xFF)
+               (sdl2:render-fill-rect renderer wall-rect)
 
-               (sdl2:render-present renderer)))
-      (sdl2-mixer:halt-music)
-      (sdl2-mixer:close-audio)
-      (sdl2-mixer:free-music music))))
+
+               (incf dot-x dot-vel-x)
+               (incf dot-y dot-vel-y)
+               
+               (when (or
+                      (not (check-collision (sdl2:make-rect dot-x dot-y
+                                                            (mWidth dot-texture) (mHeight dot-texture))
+                                            window-rect))
+                      (check-collision (sdl2:make-rect dot-x dot-y
+                                                       (mWidth dot-texture) (mHeight dot-texture))
+                                       wall-rect))
+                 (progn
+                   (decf dot-x dot-vel-x)
+                   (decf dot-y dot-vel-y)))
+
+               (texture-render dot-texture dot-x dot-y)
+               (sdl2:render-present renderer))))))
 
 (main)

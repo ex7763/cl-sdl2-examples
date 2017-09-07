@@ -114,39 +114,24 @@
                         :flags '(:shown))
        (sdl2:with-renderer (,renderer ,window :index -1 :flags '(:accelerated :presentvsync))
          (sdl2-image:init '(:png))
-         (sdl2-ttf:init)
          ,@body
-         (sdl2-ttf:quit)
          (sdl2-image:quit)))))
-
-(defun move-camera (x y camera)
-  (setf (camera)))
 
 (defun main()
   (with-window-renderer (window renderer)
-    (let ((font (sdl2-ttf:open-font "monaco.ttf" 20))
-          (text-texture (make-instance 'texture :renderer renderer))
-          (camera (sdl2:make-rect 0 0 *screen-width* *screen-height*)))
-      (texture-load-from-string text-texture font
-                                "test123........Hello, World")
+    (let ((bg-texture (make-instance 'texture :renderer renderer))
+          (camera-x 0))
+      (texture-load-from-file bg-texture "media/bg.jpg")
       (sdl2:with-event-loop (:method :poll)
         (:quit () t)
-        (:keydown
-         (:keysym keysym)
-         (let ((scancode (scancode-value keysym)))
-           (cond ((scancode= scancode :scancode-space)
-                  (progn (format t "Playing Song~%")
-                         (sdl2-mixer:play-music music -1))))))
         (:idle ()
                (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
                (sdl2:render-clear renderer)
 
-               (texture-render text-texture
-                               (- (floor *screen-width* 2)
-                                  (floor (mWidth text-texture) 2))
-                               (- (floor *screen-height* 2)
-                                  (floor (mHeight text-texture) 2)))
-
+               (if (< (mWidth bg-texture) (abs camera-x) )
+                   (setf camera-x 0)
+                   (decf camera-x))
+               (texture-render bg-texture camera-x 0)
                (sdl2:render-present renderer))))))
 
 (main)

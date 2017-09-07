@@ -1,10 +1,12 @@
-(ql:quickload '("sdl2" "sdl2-image" "sdl2-ttf" "sdl2-mixer"))
+;; UNDONE
 
-(defpackage #:sdl-sound
+(ql:quickload '("sdl2" "sdl2-image" "sdl2-ttf"))
+
+(defpackage #:sdl-motion
   (:use :cl :sdl2)
   (:export :main))
 
-(in-package :sdl-sound)
+(in-package :sdl-motion)
 
 (defparameter *screen-width* 640)
 (defparameter *screen-height* 480)
@@ -81,7 +83,6 @@
            (sdl2:render-copy renderer mTexture :dest-rect
                              (sdl2:make-rect x y mWidth mHeight))))))
 
-
 (defmacro with-window-renderer ((window renderer) &body body)
   `(sdl2:with-init (:video)
      (sdl2:with-window (,window
@@ -91,56 +92,55 @@
                         :flags '(:shown))
        (sdl2:with-renderer (,renderer ,window :index -1 :flags '(:accelerated :presentvsync))
          (sdl2-image:init '(:png))
-         (sdl2-ttf:init)
-         (sdl2-mixer:init :mp3)
          ,@body
-         (sdl2-image:quit)
-         (sdl2-ttf:quit)
-         (sdl2-mixer:quit)))))
+         (sdl2-image:quit)))))
 
 (defun main()
   (with-window-renderer (window renderer)
-    (sdl2-mixer:open-audio 22050 :s16sys 2 2048)
-    (let ((font (sdl2-ttf:open-font "media/monaco.ttf" 20))
-          (text-texture (make-instance 'texture :renderer renderer))
-          (music (sdl2-mixer:load-music "media/temple.mp3"))
-          (volume 128))
-      (texture-load-from-string text-texture font
-                                "space to start, 0 to stop, 1 to resume and 2 to pause")
+    (let ((dot-texture (make-instance 'texture :renderer renderer))
+          (dot-acc 1)
+          (dot-speed-max 5)
+          (dot-x 0)
+          (dot-y 0)
+          (dot-vel-x 0)
+          (dot-vel-y 0))
+      (texture-load-from-file dot-texture "media/dot.bmp")
       (sdl2:with-event-loop (:method :poll)
         (:quit () t)
         (:keydown
          (:keysym keysym)
-         (let ((scancode (scancode-value keysym)))
-           (cond ((scancode= scancode :scancode-space)
-                  (progn (format t "Playing Song~%")
-                         (sdl2-mixer:play-music music -1)))
-                 ((scancode= scancode :scancode-0)
-                  (progn (format t "Stop Song~%")
-                         (sdl2-mixer:halt-music)))
-                 ((scancode= scancode :scancode-up)
-                  (when (< (+ volume 20) 128)
-                    (incf volume 20)
-                    (format t "Current Volume: ~a~%" volume)
-                    (sdl2-mixer:volume-music volume)))
+         (let ((scancode (sdl2:scancode-value keysym)))
+           (cond ((scancode= scancode :scancode-up)
+                  (decf dot-vel-y dot-acc))
                  ((scancode= scancode :scancode-down)
-                  (when (> (- volume 20) 0)
-                    (decf volume 20)
-                    (format t "Current Volume: ~a~%" volume)
-                    (sdl2-mixer:volume-music volume))))))
+                  (incf dot-vel-y dot-acc))
+                 ((scancode= scancode :scancode-left)
+                  (decf dot-vel-x dot-acc))
+                 ((scancode= scancode :scancode-right)
+                  (incf dot-vel-x dot-acc)))))
+        (:keyup
+         (:keysym keysym)
+         (let ((scancode (sdl2:scancode-value keysym)))
+           (cond ((scancode= scancode :scancode-up)
+                  (setf dot-vel-y 0))
+                 ((scancode= scancode :scancode-down)
+                  (setf dot-vel-y 0))
+                 ((scancode= scancode :scancode-left)
+                  (setf dot-vel-x 0))
+                 ((scancode= scancode :scancode-right)
+                  (setf dot-vel-x 0)))))
         (:idle ()
                (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
                (sdl2:render-clear renderer)
 
-               (texture-render text-texture
-                               (- (floor *screen-width* 2)
-                                  (floor (mWidth text-texture) 2))
-                               (- (floor *screen-height* 2)
-                                  (floor (mHeight text-texture) 2)))
+               (if (> dot-vel-x 0)
+                   (incf dot-x (min dot-vel-x dot-speed-max))
+                   (incf dot-x (max dot-vel-x (- dot-speed-max))))
+               (if (> dot-vel-y 0)
+                   (incf dot-y (min dot-vel-y dot-speed-max))
+                   (incf dot-y (max dot-vel-y (- dot-speed-max))))
 
-               (sdl2:render-present renderer)))
-      (sdl2-mixer:halt-music)
-      (sdl2-mixer:close-audio)
-      (sdl2-mixer:free-music music))))
+               (texture-render dot-texture dot-x dot-y)
+               (sdl2:render-present renderer))))))
 
 (main)

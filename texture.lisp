@@ -65,8 +65,8 @@
     (let ((background-texture (make-instance 'texture :renderer renderer))
           (foo-texture (make-instance 'texture :renderer renderer)))
      
-          (texture-load-from-file background-texture "background.png")
-          (texture-load-from-file foo-texture "foo.png") 
+          (texture-load-from-file background-texture "media/background.png")
+          (texture-load-from-file foo-texture "media/foo.png") 
            
           (sdl2:with-event-loop (:method :poll)
             (:quit () t)
