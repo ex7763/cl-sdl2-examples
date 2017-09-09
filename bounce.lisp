@@ -1,10 +1,10 @@
 (ql:quickload '("sdl2" "sdl2-image" "sdl2-ttf"))
 
-(defpackage #:sdl-collision-rect
+(defpackage #:sdl-bounce
   (:use :cl :sdl2)
   (:export :main))
 
-(in-package :sdl-collision-rect)
+(in-package :sdl-bounce)
 
 (defparameter *screen-width* 640)
 (defparameter *screen-height* 480)
@@ -38,6 +38,35 @@
 
 (defgeneric texture-render (obj x y &key clip)
   (:documentation "Render this texture."))
+
+(defclass dot ()
+  ((pos-x
+    :accessor pos-x
+    :initform 0)
+   (pos-y
+    :accessor pos-y
+    :initform 0)
+   (vel-x
+    :accessor vel-x
+    :initform 0)
+   (vel-y
+    :accessor vel-y
+    :initform 0)
+   (obj-speed
+    :accessor obj-speed
+    :initform 0)))
+
+(defgeneric dot-random-vel (obj num1 num2)
+  (:documentation "Set random velocity num1 ~ (num1 + num2)."))
+
+(defgeneric dot-random-pos (obj)
+  (:documentation "Set random position."))
+
+(defgeneric dot-move (obj)
+  (:documentation "Move dot."))
+
+(defgeneric dot-bounce (obj)
+  (:documentation "If hit the wall, change velocity of dot."))
 
 (defmethod texture-load-from-file ((obj texture) filepath)
   (with-slots (renderer mTexture mWidth mHeight) obj
@@ -81,6 +110,26 @@
            (sdl2:render-copy renderer mTexture :dest-rect
                              (sdl2:make-rect x y mWidth mHeight))))))
 
+(defmethod dot-random-vel ((obj dot) num1 num2)
+  (setf (vel-x obj) (+ num1 (random num2)))
+  (setf (vel-y obj) (+ num1 (random num2))))
+
+(defmethod dot-random-pos ((obj dot))
+  (setf (pos-x obj) (- (random *screen-width*) 20))
+  (setf (pos-y obj) (- (random *screen-height*) 20)))
+
+(defmethod dot-move ((obj dot))
+  (incf (pos-x obj) (vel-x obj))
+  (incf (pos-y obj) (vel-y obj)))
+
+(defmethod dot-bounce ((obj dot))
+  (when (or (> (+ (pos-x obj) 20) *screen-width*)
+            (< (pos-x obj) 0))
+    (setf (vel-x obj) (- (vel-x obj))))
+  (when (or (> (+ (pos-y obj) 20) *screen-height*)
+            (< (pos-y obj) 0))
+    (setf (vel-y obj) (- (vel-y obj)))))
+
 (defmacro with-window-renderer ((window renderer) &body body)
   `(sdl2:with-init (:video)
      (sdl2:with-window (,window
@@ -109,62 +158,39 @@
   (with-window-renderer (window renderer)
     (let ((dot-texture (make-instance 'texture :renderer renderer))
           (dot-speed 3)
-          (dot-x 0)
-          (dot-y 0)
-          (dot-vel-x 0)
-          (dot-vel-y 0)
+          (dot1 (make-instance 'dot))
+          (dot2 (make-instance 'dot))
           (window-rect (sdl2::make-rect 0 0 *screen-width* *screen-height*))
           (wall-rect (sdl2:make-rect (/ *screen-width* 4) 30
                                      (/ *screen-width* 8) (/ *screen-height* 2))))
       (texture-load-from-file dot-texture "media/dot.bmp")
+      (dot-random-vel dot1 3 7)
+      (dot-random-pos dot2)
+      (dot-random-vel dot2 3 7)
       (sdl2:with-event-loop (:method :poll)
         (:quit () t)
-        (:keydown
-         (:keysym keysym)
-         (let ((scancode (scancode-value keysym)))
-           (cond ((scancode= scancode :scancode-up)
-                  (setf dot-vel-y (- dot-speed)))
-                 ((scancode= scancode :scancode-down)
-                  (setf dot-vel-y dot-speed))
-                 ((scancode= scancode :scancode-left)
-                  (setf dot-vel-x (- dot-speed)))
-                 ((scancode= scancode :scancode-right)
-                  (setf dot-vel-x dot-speed)))))
-        (:keyup
-         (:keysym keysym)
-         (let ((scancode (scancode-value keysym)))
-           (cond ((scancode= scancode :scancode-up)
-                  (setf dot-vel-y 0))
-                 ((scancode= scancode :scancode-down)
-                  (setf dot-vel-y 0))
-                 ((scancode= scancode :scancode-left)
-                  (setf dot-vel-x 0))
-                 ((scancode= scancode :scancode-right)
-                  (setf dot-vel-x 0)))))
+        ;; (:keydown
+        ;;  (:keysym keysym)
+        ;;  (let ((scancode (scancode-value keysym)))
+        ;;    (cond ((scancode= scancode :scancode-up)
+        ;;           (setf dot-vel-y (- dot-speed)))
+        ;;          ((scancode= scancode :scancode-down)
+        ;;           (setf dot-vel-y dot-speed))
+        ;;          ((scancode= scancode :scancode-left)
+        ;;           (setf dot-vel-x (- dot-speed)))
+        ;;          ((scancode= scancode :scancode-right)
+        ;;           (setf dot-vel-x dot-speed)))))
         (:idle ()
                (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
                (sdl2:render-clear renderer)
 
-               ;; Render a wall
-               (sdl2:set-render-draw-color renderer #xCC #xFF #xCC #xFF)
-               (sdl2:render-fill-rect renderer wall-rect)
-
-
-               (incf dot-x dot-vel-x)
-               (incf dot-y dot-vel-y)
+               (dot-move dot1)
+               (dot-bounce dot1)
+               (dot-move dot2)
+               (dot-bounce dot2)
                
-               (when (or
-                      (not (check-collision (sdl2:make-rect dot-x dot-y
-                                                            (mWidth dot-texture) (mHeight dot-texture))
-                                            window-rect))
-                      (check-collision (sdl2:make-rect dot-x dot-y
-                                                       (mWidth dot-texture) (mHeight dot-texture))
-                                       wall-rect))
-                 (progn
-                   (decf dot-x dot-vel-x)
-                   (decf dot-y dot-vel-y)))
-
-               (texture-render dot-texture dot-x dot-y)
+               (texture-render dot-texture (pos-x dot1) (pos-y dot1))
+               (texture-render dot-texture (pos-x dot2) (pos-y dot2))
                (sdl2:render-present renderer))))))
 
 (main)

@@ -1,10 +1,10 @@
 (ql:quickload '("sdl2" "sdl2-image" "sdl2-ttf"))
 
-(defpackage #:sdl-collision-rect
+(defpackage #:sdl-collision-circle
   (:use :cl :sdl2)
   (:export :main))
 
-(in-package :sdl-collision-rect)
+(in-package :sdl-collision-circle)
 
 (defparameter *screen-width* 640)
 (defparameter *screen-height* 480)
@@ -38,6 +38,48 @@
 
 (defgeneric texture-render (obj x y &key clip)
   (:documentation "Render this texture."))
+
+(defclass dot ()
+  ((pos-x
+    :accessor pos-x
+    :initform 0)
+   (pos-y
+    :accessor pos-y
+    :initform 0)
+   (dot-width
+    :accessor dot-width
+    :initform 20)
+   (dot-height
+    :accessor dot-height
+    :initform 20)
+   (r
+    :initarg :r
+    :accessor r
+    :initform 0)
+   (vel-x
+    :accessor vel-x
+    :initform 0)
+   (vel-y
+    :accessor vel-y
+    :initform 0)
+   (obj-speed
+    :accessor obj-speed
+    :initform 0)))
+
+(defgeneric dot-random-vel (obj num1 num2)
+  (:documentation "Set random velocity num1 ~ (num1 + num2)."))
+
+(defgeneric dot-random-pos (obj)
+  (:documentation "Set random position."))
+
+(defgeneric dot-move (obj)
+  (:documentation "Move dot."))
+
+(defgeneric dot-stop (obj)
+  (:documentation "Stop dot."))
+
+(defgeneric dot-bounce (obj)
+  (:documentation "If hit the wall, change velocity of dot."))
 
 (defmethod texture-load-from-file ((obj texture) filepath)
   (with-slots (renderer mTexture mWidth mHeight) obj
@@ -81,6 +123,30 @@
            (sdl2:render-copy renderer mTexture :dest-rect
                              (sdl2:make-rect x y mWidth mHeight))))))
 
+(defmethod dot-random-vel ((obj dot) num1 num2)
+  (setf (vel-x obj) (+ num1 (random num2)))
+  (setf (vel-y obj) (+ num1 (random num2))))
+
+(defmethod dot-random-pos ((obj dot))
+  (setf (pos-x obj) (- (random *screen-width*) 20))
+  (setf (pos-y obj) (- (random *screen-height*) 20)))
+
+(defmethod dot-move ((obj dot))
+  (incf (pos-x obj) (vel-x obj))
+  (incf (pos-y obj) (vel-y obj)))
+
+(defmethod dot-stop ((obj dot))
+  (decf (pos-x obj) (vel-x obj))
+  (decf (pos-y obj) (vel-y obj)))
+
+(defmethod dot-bounce ((obj dot))
+  (when (or (> (+ (pos-x obj) 20) *screen-width*)
+            (< (pos-x obj) 0))
+    (setf (vel-x obj) (- (vel-x obj))))
+  (when (or (> (+ (pos-y obj) 20) *screen-height*)
+            (< (pos-y obj) 0))
+    (setf (vel-y obj) (- (vel-y obj)))))
+
 (defmacro with-window-renderer ((window renderer) &body body)
   `(sdl2:with-init (:video)
      (sdl2:with-window (,window
@@ -93,78 +159,91 @@
          ,@body
          (sdl2-image:quit)))))
 
-(defun check-collision (rect1 rect2)
-  (if (or (<= (+ (sdl2:rect-y rect1) (sdl2:rect-height rect1))
-              (sdl2:rect-y rect2))
-          (>= (sdl2:rect-y rect1)
-              (+ (sdl2:rect-y rect2) (sdl2:rect-height rect2)))
-          (<= (+ (sdl2:rect-x rect1) (sdl2:rect-width rect1))
-              (sdl2:rect-x rect2))
-          (>= (sdl2:rect-x rect1)
-              (+ (sdl2:rect-x rect2) (sdl2:rect-width rect2))))
-      nil
-      t))
+(defun distance-square (ax ay bx by)
+  (+ (expt (- bx ax) 2) (expt (- by ay) 2)))
+
+(defun check-collision (obj1 obj2)
+  (cond ((and (eql (type-of obj1) 'dot)
+              (eql (type-of obj2) 'dot))
+         (let ((total-raduis-square (expt (+ (r obj1) (r obj2)) 2)))
+           (if (> total-raduis-square (distance-square (pos-x obj1) (pos-y obj1)
+                                                       (pos-x obj2) (pos-y obj2)))
+               t
+               nil)))
+        ((and (eql (type-of obj1) 'dot)
+              (listp obj2))
+         (let ((cx 0) (cy 0))
+           (if (< (pos-x obj1) (first obj2))
+               (setf cx (first obj2))
+               (if (> (pos-x obj1) (+ (first obj2) (third obj2)))
+                   (setf cx (+ (first obj2) (third obj2)))
+                   (setf cx (pos-x obj1))))
+           (if (< (pos-y obj1) (second obj2))
+               (setf cy (second obj2))
+               (if (> (pos-y obj1) (+ (second obj2) (fourth obj2)))
+                   (setf cy (+ (second obj2) (fourth obj2)))
+                   (setf cy (pos-y obj1))))
+           (if (< (distance-square (pos-x obj1) (pos-y obj1) cx cy)
+                  (expt (r obj1) 2))
+               t
+               nil)))
+        (t (error "Wrong type"))))
+
+(defun make-rect-from-list (lst)
+  (sdl2:make-rect (first lst) (second lst) (third lst) (fourth lst)))
 
 (defun main()
   (with-window-renderer (window renderer)
     (let ((dot-texture (make-instance 'texture :renderer renderer))
           (dot-speed 3)
-          (dot-x 0)
-          (dot-y 0)
-          (dot-vel-x 0)
-          (dot-vel-y 0)
-          (window-rect (sdl2::make-rect 0 0 *screen-width* *screen-height*))
-          (wall-rect (sdl2:make-rect (/ *screen-width* 4) 30
-                                     (/ *screen-width* 8) (/ *screen-height* 2))))
+          (dot1 (make-instance 'dot :r 10))
+          (dot2 (make-instance 'dot :r 10))
+          (wall-rect (list (/ *screen-width* 4) 30
+                           (/ *screen-width* 8) (/ *screen-height* 2))))
       (texture-load-from-file dot-texture "media/dot.bmp")
+      (dot-random-pos dot2)
       (sdl2:with-event-loop (:method :poll)
         (:quit () t)
         (:keydown
          (:keysym keysym)
          (let ((scancode (scancode-value keysym)))
            (cond ((scancode= scancode :scancode-up)
-                  (setf dot-vel-y (- dot-speed)))
+                  (setf (vel-y dot1) (- dot-speed)))
                  ((scancode= scancode :scancode-down)
-                  (setf dot-vel-y dot-speed))
+                  (setf (vel-y dot1) dot-speed))
                  ((scancode= scancode :scancode-left)
-                  (setf dot-vel-x (- dot-speed)))
+                  (setf (vel-x dot1) (- dot-speed)))
                  ((scancode= scancode :scancode-right)
-                  (setf dot-vel-x dot-speed)))))
+                  (setf (vel-x dot1) dot-speed)))))
         (:keyup
          (:keysym keysym)
          (let ((scancode (scancode-value keysym)))
            (cond ((scancode= scancode :scancode-up)
-                  (setf dot-vel-y 0))
+                  (setf (vel-y dot1) 0))
                  ((scancode= scancode :scancode-down)
-                  (setf dot-vel-y 0))
+                  (setf (vel-y dot1) 0))
                  ((scancode= scancode :scancode-left)
-                  (setf dot-vel-x 0))
+                  (setf (vel-x dot1) 0))
                  ((scancode= scancode :scancode-right)
-                  (setf dot-vel-x 0)))))
+                  (setf (vel-x dot1) 0)))))
         (:idle ()
                (sdl2:set-render-draw-color renderer #xFF #xFF #xFF #xFF)
                (sdl2:render-clear renderer)
 
                ;; Render a wall
                (sdl2:set-render-draw-color renderer #xCC #xFF #xCC #xFF)
-               (sdl2:render-fill-rect renderer wall-rect)
+               (sdl2:render-fill-rect renderer (make-rect-from-list wall-rect))
 
-
-               (incf dot-x dot-vel-x)
-               (incf dot-y dot-vel-y)
+               (dot-move dot1)
                
-               (when (or
-                      (not (check-collision (sdl2:make-rect dot-x dot-y
-                                                            (mWidth dot-texture) (mHeight dot-texture))
-                                            window-rect))
-                      (check-collision (sdl2:make-rect dot-x dot-y
-                                                       (mWidth dot-texture) (mHeight dot-texture))
-                                       wall-rect))
-                 (progn
-                   (decf dot-x dot-vel-x)
-                   (decf dot-y dot-vel-y)))
+               (when (or (check-collision dot1 dot2)
+                         (check-collision dot1 wall-rect))
+                   (dot-stop dot1))
 
-               (texture-render dot-texture dot-x dot-y)
+               (texture-render dot-texture (- (pos-x dot1) 10)
+                               (- (pos-y dot1) 10))
+               (texture-render dot-texture (- (pos-x dot2) 10)
+                               (- (pos-y dot2) 10))
                (sdl2:render-present renderer))))))
 
 (main)
