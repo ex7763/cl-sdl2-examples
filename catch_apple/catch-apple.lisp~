@@ -1,0 +1,10 @@
+(defpackage :catch-apple
+            (:use :cl)
+            (:use :catch-apple.app-utils)
+            (:export :-main))
+
+(in-package :catch-apple)
+
+(defun -main (&optional args)
+  (format t "~a~%" "I don't do much yet"))
+
